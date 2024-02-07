@@ -14,7 +14,7 @@ def ci_error(samples, center, confidence=.95):
 def manual_merge(*elements: List[DataAssembly], on='neuroid') -> DataAssembly:
     """
     Manually merge a set of assemblies where xarray's automated merge might fail.
-    This function likely covers only covers a small number of use-cases, and should thus be used with caution.
+    This function likely covers only a small number of use-cases, and should thus be used with caution.
     """
     dims = elements[0].dims
     assert all(element.dims == dims for element in elements[1:])
