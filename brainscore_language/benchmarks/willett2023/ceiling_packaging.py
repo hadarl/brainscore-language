@@ -17,7 +17,7 @@ def v(x, v0, tau0):
 
 
 class ExtrapolationCeiling:
-    def __init__(self, subject_column='subject_id', extrapolation_dimension='neuroid', num_bootstraps=100):
+    def __init__(self, subject_column='session_index', extrapolation_dimension='neuroid', num_bootstraps=100):
         self._logger = logging.getLogger(fullname(self))
         self.subject_column = subject_column
         self.holdout_ceiling = HoldoutSubjectCeiling(subject_column=subject_column)
@@ -54,8 +54,9 @@ class ExtrapolationCeiling:
         subjects = set(assembly[self.subject_column].values)
         subject_combinations = list(itertools.combinations(sorted(subjects), num_subjects))
         for sub_subjects in subject_combinations:
-            sub_assembly = assembly[{'neuroid': [subject in sub_subjects
-                                                 for subject in assembly[self.subject_column].values]}]
+            # selected_indices = {'presentation': [subject in sub_subjects for subject in assembly[self.subject_column].values]}
+            selected_indices = [subject in sub_subjects for subject in assembly[self.subject_column].values]
+            sub_assembly = assembly[selected_indices,:,:]
             yield {self.subject_column: sub_subjects}, sub_assembly
 
     def average_collected(self, scores):
@@ -159,18 +160,60 @@ class HoldoutSubjectCeiling:
         self.subject_column = subject_column
         self._logger = logging.getLogger(fullname(self))
 
+    def get_first_occurrence(group):
+        return group.isel(presentation=0)
+
     def __call__(self, assembly, metric):
         subjects = set(assembly[self.subject_column].values)
         scores = []
         iterate_subjects = self.get_subject_iterations(subjects)
         for subject in tqdm(iterate_subjects, desc='heldout subject'):
             try:
-                subject_assembly = assembly[{'neuroid': [subject_value == subject
-                                                         for subject_value in assembly[self.subject_column].values]}]
+                #subject_assembly = assembly[{'neuroid': [subject_value == subject
+                #                                         for subject_value in assembly[self.subject_column].values]}]
+
+                # Extracting data from the specific session (="subject")
+                selected_indices = [subject_value == subject for subject_value in assembly[self.subject_column].values]
+                subject_assembly = assembly[selected_indices, :, :]
                 # run subject pool as neural candidate
+
+                # Extracting data of all other sessions (="subjects")
                 subject_pool = subjects - {subject}
-                pool_assembly = assembly[
-                    {'neuroid': [subject in subject_pool for subject in assembly[self.subject_column].values]}]
+                selected_indices_pool = [subject in subject_pool for subject in assembly[self.subject_column].values]
+                pool_assembly = assembly[selected_indices_pool, :, :]
+                #pool_assembly = assembly[
+                #    {'presentation': [subject in subject_pool for subject in assembly[self.subject_column].values]}]
+
+                # Finding the set of words that exist in both datasets:
+                stimuli_set_pool = set(pool_assembly['word'].values)
+                stimuli_set_subject = set(subject_assembly['word'].values)
+                overlapping_stimuli = stimuli_set_pool.intersection(stimuli_set_subject)
+                overlapping_stimuli = list(overlapping_stimuli)
+                stimuli_set_pool = list(stimuli_set_pool)
+                stimuli_set_subject = list(stimuli_set_subject)
+
+
+                # Finding the indices of the overlapping words in the pool set (finds only first occurrence)
+                first_occurrence_indices_pool = np.full_like(overlapping_stimuli, -1, dtype=int)
+                # Find the first occurrence of each string element in array2
+                for i, element in enumerate(overlapping_stimuli):
+                    first_occurrence_indices_pool[i]  = stimuli_set_pool.index(element)
+
+                # Finding the indices of the overlapping words in the subject set (finds only first occurrence)
+                first_occurrence_indices_subject = np.full_like(overlapping_stimuli, -1, dtype=int)
+                # Find the first occurrence of each string element in array2
+                for i, element in enumerate(overlapping_stimuli):
+                    first_occurrence_indices_subject[i] = stimuli_set_subject.index(element)
+
+                # Extracting the assemblies of the overlapping words
+                pool_assembly = pool_assembly[first_occurrence_indices_pool, :, :]
+                subject_assembly = subject_assembly[first_occurrence_indices_subject, :, :]
+
+                # PS, the reason for doing it in this very long way and not using intersect is because intersect obliterates most of the assembly fields
+
+                #Problem: WE ARE NOT COMPARING THE SAME SENTENCES, BUT THE SAME WORDS COMING FROM DIFFERENT SENTENCES.
+                # THEREFORE THE STIMULU_ID IS NOT IDENTICAL. CURRENTLY I WILL BE IGNORING THIS AND OVERWRITE THE STIMULUS_ID SO THAT THEY CAN BE SCORED TOGETHER
+
                 score = self.score(pool_assembly, subject_assembly, metric=metric)
                 # store scores
                 apply_raw = 'raw' in score.attrs and \
