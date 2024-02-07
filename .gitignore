@@ -150,3 +150,9 @@ cache
 .idea/
 wandb/
 **/models/lm1b/resources
+/conda_score--glove-840b_Pereira2018.243sentences-linear.pkl
+/conda_score--distilgpt2_Futrell2018-pearsonr.pkl
+/github-hadarl
+/github-hadarl.pub
+/id_rsa_gmail
+/id_rsa_gmail.pub
