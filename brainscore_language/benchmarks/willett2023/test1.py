@@ -11,9 +11,11 @@ import time
 
 st = time.time()
 
-model_identifier = 'distilgpt2'
+# model_identifier = 'distilgpt2'
+model_identifier = 'gpt2-large'
 
 model = HuggingfaceSubject(model_id=model_identifier, region_layer_mapping={})
+print(model.basemodel)
 
 benchmark = load_benchmark('Willett2023-linear')
 

@@ -214,6 +214,11 @@ class HoldoutSubjectCeiling:
                 #Problem: WE ARE NOT COMPARING THE SAME SENTENCES, BUT THE SAME WORDS COMING FROM DIFFERENT SENTENCES.
                 # THEREFORE THE STIMULUS_ID IS NOT IDENTICAL. CURRENTLY I WILL BE IGNORING THIS AND OVERWRITE THE STIMULUS_ID SO THAT THEY CAN BE SCORED TOGETHER
 
+                # repetition_dims = assembly['presentation'].dims
+                # nonrepetition_coords = [coord for coord, dims, values in walk_coords(assembly)
+                #                         if dims == repetition_dims and coord != 'presentation']
+                # pool_words_average = pool_assembly.multi_groupby(nonrepetition_coords).mean(dim=repetition_dims)
+
                 score = self.score(pool_assembly, subject_assembly, metric=metric)
                 # store scores
                 apply_raw = 'raw' in score.attrs and \
