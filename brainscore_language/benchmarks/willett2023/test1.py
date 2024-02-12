@@ -23,7 +23,7 @@ layer_scores = []
 
 from brainscore_language import score
 
-for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(5)], desc='layers'):
+for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(36)], desc='layers'):
     print(layer)
     layer_model = HuggingfaceSubject(model_id=model_identifier, region_layer_mapping={
         ArtificialSubject.RecordingTarget.language_system: layer})
@@ -40,3 +40,31 @@ et = time.time()
 
 elapsed_time = et - st
 print('Execution time:', elapsed_time, 'seconds')
+
+
+#########
+
+layer_names = []
+for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(36)], desc='layers'):
+    layer_names.append(layer)
+
+print(layer_names)
+
+layer_scores_ordered = []
+for layer in layer_names:
+    layer_scores_ordered.append(layer_scores.sel(layer=layer).data)
+
+print(layer_scores_ordered)
+
+import numpy as np
+from matplotlib import pyplot
+
+fig, ax = pyplot.subplots()
+x = np.arange(len(layer_scores_ordered))
+ax.scatter(x, layer_scores_ordered)
+ax.set_xticks(x)
+ax.set_xticklabels(layer_names, rotation=90)
+ax.set_ylabel('score')
+
+fig.savefig('Willett2023_gpt2-large_10Feb.png')
+
