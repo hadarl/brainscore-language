@@ -10,6 +10,7 @@ from brainscore_core.metrics import Score
 from brainscore_language.benchmark_helpers import ci_error, manual_merge
 from brainscore_language.utils import fullname
 from brainscore_language.utils.transformations import apply_aggregate
+from brainscore_language import load_dataset, load_metric
 
 
 def v(x, v0, tau0):
@@ -155,8 +156,8 @@ class ExtrapolationCeiling:
         return params
 
 
-class HoldoutSubjectCeiling:
-    def __init__(self, subject_column):
+class HoldoutSubjectCeilingWordAverage:
+    def __init__(self, subject_column='subject_id'):
         self.subject_column = subject_column
         self._logger = logging.getLogger(fullname(self))
 
@@ -164,7 +165,7 @@ class HoldoutSubjectCeiling:
         return group.isel(presentation=0)
 
     def __call__(self, assembly, metric):
-        subjects = set(assembly[self.subject_column].values)
+        subjects = set(assembly.session_num.values)
         scores = []
         iterate_subjects = self.get_subject_iterations(subjects)
         for subject in tqdm(iterate_subjects, desc='heldout subject'):
@@ -173,13 +174,13 @@ class HoldoutSubjectCeiling:
                 #                                         for subject_value in assembly[self.subject_column].values]}]
 
                 # Extracting data from the specific session (="subject")
-                selected_indices = [subject_value == subject for subject_value in assembly[self.subject_column].values]
+                selected_indices = [subject_value == subject for subject_value in assembly['subject'].values]
                 subject_assembly = assembly[selected_indices, :, :]
                 # run subject pool as neural candidate
 
                 # Extracting data of all other sessions (="subjects")
                 subject_pool = subjects - {subject}
-                selected_indices_pool = [subject in subject_pool for subject in assembly[self.subject_column].values]
+                selected_indices_pool = [subject in subject_pool for subject in assembly['subject'].values]
                 pool_assembly = assembly[selected_indices_pool, :, :]
                 #pool_assembly = assembly[
                 #    {'presentation': [subject in subject_pool for subject in assembly[self.subject_column].values]}]

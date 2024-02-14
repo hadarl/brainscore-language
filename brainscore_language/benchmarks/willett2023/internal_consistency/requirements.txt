@@ -1,0 +1,3 @@
+# Adopted from brainscore-vision
+
+scipy

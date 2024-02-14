@@ -3,6 +3,8 @@ import logging
 import xarray as xr
 import numpy as np
 from numpy.random import RandomState
+from tqdm import tqdm, trange
+
 
 from brainio.assemblies import DataAssembly
 from brainscore_core.benchmarks import BenchmarkBase
@@ -10,7 +12,8 @@ from brainscore_core.metrics import Score
 from brainscore_language import load_dataset, load_metric
 from brainscore_core.metrics import Score, Metric
 from brainscore_language.artificial_subject import ArtificialSubject
-from brainscore_language.benchmarks.willett2023.ceiling_packaging import ExtrapolationCeiling
+from brainscore_language.benchmarks.willett2023.ceiling_packaging import ExtrapolationCeiling, HoldoutSubjectCeilingWordAverage
+
 # from brainscore_language.data.blank2014 import BIBTEX
 # from brainscore_language.utils.ceiling import ceiling_normalize
 #from brainscore_language.data.willett2023 import load_willett2023_reference
@@ -35,9 +38,11 @@ class Willett2023Linear(BenchmarkBase):
         cons_metric = load_metric('pearsonr')
         # ceiler = ExtrapolationCeiling()
         #ceiling = ceiler(assembly=self.data, metric=self.metric)
-        ceiler = SplitHalvesConsistency(num_splits=10, split_coordinate='subject', consistency_metric=cons_metric)  #self.metric)
-        # ceiler = InternalConsistency(num_splits=10, split_coordinate='subject', consistency_metric=cons_metric)  # self.metric)
-        ceiling = ceiler(self.data)
+        # ceiler = SplitHalvesConsistency(num_splits=10, split_coordinate='subject', consistency_metric=cons_metric)  #self.metric)
+        ceiler = InternalConsistency(num_splits=10, split_coordinate='subject', consistency_metric=cons_metric)  # self.metric)
+        #subject_column = 'subject_id'
+        #ceiler = HoldoutSubjectCeilingWordAverage(subject_column=subject_column)  # self.metric)
+        ceiling = ceiler(assembly=self.data)
 
         super(Willett2023Linear, self).__init__(
             identifier='Willett2023-linear',
@@ -121,6 +126,91 @@ class InternalConsistency:
 
     def __call__(self, assembly: DataAssembly) -> Score:
         split_dim = np.array(assembly[self.split_coordinate].dims).item()
+
+
+
+
+
+        num_subjects = len(set(assembly['subject'].values))
+        subject_subsamples = self.build_subject_subsamples(num_subjects)
+        scores = []
+        for num_subjects in tqdm(subject_subsamples, desc='num subjects'):
+            selection_combinations = self.iterate_subsets(assembly, num_subjects=num_subjects)
+            for selections, sub_assembly in tqdm(selection_combinations, desc='selections'):
+
+                split_values = sub_assembly['subject'].values
+                random_state = RandomState(0)
+                #consistencies, uncorrected_consistencies = [], []
+                splits = range(self.num_splits)
+
+                # cut the selections (subset of sessions) into two halves
+                half1_values = random_state.choice(split_values, size=len(split_values) // 2, replace=False)
+                half2_values = set(split_values) - set(half1_values)  # this only works because of `replace=False` above
+                half1 = assembly[{split_dim: [value in half1_values for value in split_values]}].mean(split_dim)
+                half2 = assembly[{split_dim: [value in half2_values for value in split_values]}].mean(split_dim)
+
+
+                # pool_words_average = pool_assembly.multi_groupby(nonrepetition_coords).mean(dim=repetition_dims)
+
+                # then: find all overlapping words
+                stimuli_set_half1 = set(half1['word'].values)
+                stimuli_set_half2 = set(half2['word'].values)
+                overlapping_stimuli = stimuli_set_half1.intersection(stimuli_set_half2)
+                overlapping_stimuli = list(overlapping_stimuli)
+                stimuli_set_half1 = list(stimuli_set_half1)
+                stimuli_set_half2 = list(stimuli_set_half2)
+
+
+               # keep only overlapping words from half1 and half2
+                half1 = half1[overlapping_stimuli]
+                half2 = half2[overlapping_stimuli]
+
+
+                repetition_dims = assembly['presentation'].dims
+                nonrepetition_coords = [coord for coord, dims, values in walk_coords(assembly)
+                                        if dims == repetition_dims and coord != 'presentation']
+
+                half1 = half1.multi_groupby(nonrepetition_coords).mean(dim=repetition_dims)
+
+
+
+                group half1, half2 by words
+                calculate averaged response per word
+
+                make sure words are ordered in the same order
+
+                calculate correlation between the two averaged responses (one vector per half)
+
+
+
+
+
+
+
+                score = self.holdout_ceiling(assembly=sub_assembly, metric=metric)
+                score = score.expand_dims('num_subjects')
+                score['num_subjects'] = [num_subjects]
+                for key, selection in selections.items():
+                    expand_dim = f'sub_{key}'
+                    score = score.expand_dims(expand_dim)
+                    score[expand_dim] = [str(selection)]
+                scores.append(score.raw)
+        scores = Score.merge(*scores)
+        assert hasattr(scores, 'neuroid_id')
+        return scores
+
+
+
+
+
+
+
+
+
+
+
+
+
         split_values = assembly[self.split_coordinate].values
         random_state = RandomState(0)
         consistencies, uncorrected_consistencies = [], []
@@ -128,10 +218,10 @@ class InternalConsistency:
         for _ in splits:
             half1_values = random_state.choice(split_values, size=len(split_values) // 2, replace=False)
             half2_values = set(split_values) - set(half1_values)  # this only works because of `replace=False` above
-            half1 = assembly[{split_dim: [value in half1_values for value in split_values]}].mean(split_dim)
-            half2 = assembly[{split_dim: [value in half2_values for value in split_values]}].mean(split_dim)
+            half1 = assembly[{split_dim: [value in half1_values for value in split_values]}]
+            half2 = assembly[{split_dim: [value in half2_values for value in split_values]}]
 
-            consistency = self.consistency_metric(half1[:,1], half1[:,1])
+            consistency = self.consistency_metric(half1[:,1], half2[:,1])
             uncorrected_consistencies.append(consistency)
             # Spearman-Brown correction for sub-sampling
             corrected_consistency = 2 * consistency / (1 + (2 - 1) * consistency)
@@ -142,6 +232,21 @@ class InternalConsistency:
         average_consistency.attrs['raw'] = consistencies
         average_consistency.attrs['uncorrected_consistencies'] = uncorrected_consistencies
         return average_consistency
+
+    def build_subject_subsamples(self, num_subjects):
+        return tuple(range(2, num_subjects + 1))
+
+    def iterate_subsets(self, assembly, num_subjects):
+        subjects = set(assembly[self.subject_column].values)
+        subject_combinations = list(itertools.combinations(sorted(subjects), num_subjects))
+        for sub_subjects in subject_combinations:
+            # selected_indices = {'presentation': [subject in sub_subjects for subject in assembly[self.subject_column].values]}
+            selected_indices = [subject in sub_subjects for subject in assembly[self.subject_column].values]
+            sub_assembly = assembly[selected_indices,:,:]
+            yield {self.subject_column: sub_subjects}, sub_assembly
+
+    def average_collected(self, scores):
+        return scores.median('neuroid')
 
 
 
