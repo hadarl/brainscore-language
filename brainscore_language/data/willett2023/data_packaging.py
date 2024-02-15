@@ -30,7 +30,8 @@ The code in this file was run only once to initially upload the data, and is kep
 def load_willett2023_reference():
     # assembly = load_willett2023_reference()
 
-    data_dir = "/media/hadarla/DATA/willett2023/competitionData/train/"
+    data_dir = "../../../DATA/willett2023/competitionData/train/"
+    # data_dir = "../DATA/willett2023/competitionData/train/"
     mat_files = [file for file in os.listdir(data_dir) if file.endswith(".mat")]
 
     counter = 0

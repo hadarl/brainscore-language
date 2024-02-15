@@ -4,6 +4,7 @@ import xarray as xr
 import numpy as np
 from numpy.random import RandomState
 from tqdm import tqdm, trange
+import itertools
 
 
 from brainio.assemblies import DataAssembly
@@ -116,29 +117,17 @@ class InternalConsistency:
         self.consistency_metric = consistency_metric
 
 
-        # self._consistency = self.SplitHalfWrapper(split_coord=split_coord,
-        #                                           consistency_metric=consistency_metric, correction=correction)
-        # self._aggregate = aggregate
-        # cross_validation_defaults = dict(train_size=0.5, split_coord=split_coord,
-        #                                  stratification_coord=None, unique_split_values=True)
-        # cross_validation_kwargs = {**cross_validation_defaults, **(cross_validation_kwargs or {})}
-        # self._cross_validation = CrossValidationSingle(**cross_validation_kwargs)
-
     def __call__(self, assembly: DataAssembly) -> Score:
         split_dim = np.array(assembly[self.split_coordinate].dims).item()
 
-
-
-
-
         num_subjects = len(set(assembly['subject'].values))
-        subject_subsamples = self.build_subject_subsamples(num_subjects)
-        scores = []
+        subject_subsamples = self.build_subject_subsamples(num_subjects) # This is the number of subjects (sessions) to include in the subsample.
+        consistencies, uncorrected_consistencies = [], []
         for num_subjects in tqdm(subject_subsamples, desc='num subjects'):
             selection_combinations = self.iterate_subsets(assembly, num_subjects=num_subjects)
             for selections, sub_assembly in tqdm(selection_combinations, desc='selections'):
 
-                split_values = sub_assembly['subject'].values
+                split_values = np.unique(sub_assembly['subject'].values)
                 random_state = RandomState(0)
                 #consistencies, uncorrected_consistencies = [], []
                 splits = range(self.num_splits)
@@ -146,8 +135,12 @@ class InternalConsistency:
                 # cut the selections (subset of sessions) into two halves
                 half1_values = random_state.choice(split_values, size=len(split_values) // 2, replace=False)
                 half2_values = set(split_values) - set(half1_values)  # this only works because of `replace=False` above
-                half1 = assembly[{split_dim: [value in half1_values for value in split_values]}].mean(split_dim)
-                half2 = assembly[{split_dim: [value in half2_values for value in split_values]}].mean(split_dim)
+                split_half1_indices = (sub_assembly['subject']==half1_values).values
+                split_half2_indices = (sub_assembly['subject']==half2_values).values
+
+
+                half1 = sub_assembly[{split_dim: [value in half1_values for value in split1_indices]}]   #.mean(split_dim)
+                half2 = sub_assembly[{split_dim: [value in half2_values for value in split_values]}]   #.mean(split_dim)
 
 
                 # pool_words_average = pool_assembly.multi_groupby(nonrepetition_coords).mean(dim=repetition_dims)
@@ -166,84 +159,47 @@ class InternalConsistency:
                 half2 = half2[overlapping_stimuli]
 
 
+                # group half1, half2 by words, and average neural data over duplicate words.
+                # Each assembly should have elements as the number of unique words
                 repetition_dims = assembly['presentation'].dims
-                nonrepetition_coords = [coord for coord, dims, values in walk_coords(assembly)
-                                        if dims == repetition_dims and coord != 'presentation']
+                #nonrepetition_coords = [coord for coord, dims, values in walk_coords(assembly)
+                #                        if dims == repetition_dims and coord != 'presentation']
 
-                half1 = half1.multi_groupby(nonrepetition_coords).mean(dim=repetition_dims)
+                half1 = half1.multi_groupby('words').mean(dim=repetition_dims)
+                half2 = half2.multi_groupby('words').mean(dim=repetition_dims)
 
-
-
-                group half1, half2 by words
-                calculate averaged response per word
-
-                make sure words are ordered in the same order
-
-                calculate correlation between the two averaged responses (one vector per half)
+                # Make sure words are ordered in the same order
+                half1 = half1.sort_by_words
+                half2 = half2.sort_by_words
 
 
+                # Calculate correlation between the two averaged responses (one vector per half)
 
 
+                consistency = self.consistency_metric(half1[:, 1], half2[:, 1])
+                uncorrected_consistencies.append(consistency)
+                # Spearman-Brown correction for sub-sampling
+                corrected_consistency = 2 * consistency / (1 + (2 - 1) * consistency)
+                consistencies.append(corrected_consistency)
+            consistencies = Score(consistencies, coords={'split': splits}, dims=['split'])
+            uncorrected_consistencies = Score(uncorrected_consistencies, coords={'split': splits}, dims=['split'])
+            average_consistency = consistencies.median('split')
+            average_consistency.attrs['raw'] = consistencies
+            average_consistency.attrs['uncorrected_consistencies'] = uncorrected_consistencies
+            return average_consistency
 
-
-
-                score = self.holdout_ceiling(assembly=sub_assembly, metric=metric)
-                score = score.expand_dims('num_subjects')
-                score['num_subjects'] = [num_subjects]
-                for key, selection in selections.items():
-                    expand_dim = f'sub_{key}'
-                    score = score.expand_dims(expand_dim)
-                    score[expand_dim] = [str(selection)]
-                scores.append(score.raw)
-        scores = Score.merge(*scores)
-        assert hasattr(scores, 'neuroid_id')
-        return scores
-
-
-
-
-
-
-
-
-
-
-
-
-
-        split_values = assembly[self.split_coordinate].values
-        random_state = RandomState(0)
-        consistencies, uncorrected_consistencies = [], []
-        splits = range(self.num_splits)
-        for _ in splits:
-            half1_values = random_state.choice(split_values, size=len(split_values) // 2, replace=False)
-            half2_values = set(split_values) - set(half1_values)  # this only works because of `replace=False` above
-            half1 = assembly[{split_dim: [value in half1_values for value in split_values]}]
-            half2 = assembly[{split_dim: [value in half2_values for value in split_values]}]
-
-            consistency = self.consistency_metric(half1[:,1], half2[:,1])
-            uncorrected_consistencies.append(consistency)
-            # Spearman-Brown correction for sub-sampling
-            corrected_consistency = 2 * consistency / (1 + (2 - 1) * consistency)
-            consistencies.append(corrected_consistency)
-        consistencies = Score(consistencies, coords={'split': splits}, dims=['split'])
-        uncorrected_consistencies = Score(uncorrected_consistencies, coords={'split': splits}, dims=['split'])
-        average_consistency = consistencies.median('split')
-        average_consistency.attrs['raw'] = consistencies
-        average_consistency.attrs['uncorrected_consistencies'] = uncorrected_consistencies
-        return average_consistency
 
     def build_subject_subsamples(self, num_subjects):
         return tuple(range(2, num_subjects + 1))
 
     def iterate_subsets(self, assembly, num_subjects):
-        subjects = set(assembly[self.subject_column].values)
+        subjects = set(assembly['subject'].values)
         subject_combinations = list(itertools.combinations(sorted(subjects), num_subjects))
         for sub_subjects in subject_combinations:
             # selected_indices = {'presentation': [subject in sub_subjects for subject in assembly[self.subject_column].values]}
-            selected_indices = [subject in sub_subjects for subject in assembly[self.subject_column].values]
+            selected_indices = [subject in sub_subjects for subject in assembly['subject'].values]
             sub_assembly = assembly[selected_indices,:,:]
-            yield {self.subject_column: sub_subjects}, sub_assembly
+            yield {'subject': sub_subjects}, sub_assembly
 
     def average_collected(self, scores):
         return scores.median('neuroid')
