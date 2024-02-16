@@ -19,6 +19,8 @@ print(model.basemodel)
 
 benchmark = load_benchmark('Willett2023-linear')
 
+#########
+
 layer_scores = []
 
 from brainscore_language import score
@@ -68,3 +70,53 @@ ax.set_ylabel('score')
 
 fig.savefig('Willett2023_gpt2-large_10Feb.png')
 
+
+def plot_activations_per_word(assembly):
+    import matplotlib.pyplot as plt
+
+    words = assembly.word.values
+
+    # Create subplots for each word
+    fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(15, 8))
+
+    # Flatten the axes for easier indexing
+    axes = axes.flatten()
+
+    for i, word in enumerate(words):
+        ax = axes[i]
+        data_for_word = assembly.sel(word=word)
+
+        # Plot the data as a colored map
+        im = ax.imshow(data_for_word.values.T, cmap='viridis', aspect='auto', origin='lower')
+
+        # Add labels and title
+        ax.set_title(f"Word: {word}")
+        ax.set_xlabel('Neuroid Index')
+        ax.set_ylabel('Time Bin')
+
+    # Add a colorbar
+    cbar = fig.colorbar(im, ax=axes, orientation='vertical', pad=0.02)
+    cbar.set_label('Mean Activity')
+
+    # Adjust layout and show the plot
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_histogram_neuroid(assembly, index):
+
+    import matplotlib.pyplot as plt
+
+    # Extract values for the 3rd neuroid
+    neuroid_values = assembly.sel(neuroid=index).values.flatten()
+
+    # Create a histogram
+    plt.hist(neuroid_values, bins=50, color='skyblue', edgecolor='black')
+
+    # Add labels and title
+    plt.xlabel('Neuroid Values')
+    plt.ylabel('Frequency')
+    plt.title(f'Histogram of Values for Neuroid {index}')
+
+    # Show the plot
+    plt.show()

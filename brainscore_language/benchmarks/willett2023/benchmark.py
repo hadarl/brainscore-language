@@ -6,7 +6,7 @@ from numpy.random import RandomState
 from tqdm import tqdm, trange
 import itertools
 
-
+from brainio.assemblies import array_is_element, walk_coords, DataAssembly, merge_data_arrays
 from brainio.assemblies import DataAssembly
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
@@ -131,17 +131,20 @@ class InternalConsistency:
                 random_state = RandomState(0)
                 #consistencies, uncorrected_consistencies = [], []
                 splits = range(self.num_splits)
-
+                # probably need to add here a loop over splits
                 # cut the selections (subset of sessions) into two halves
                 half1_values = random_state.choice(split_values, size=len(split_values) // 2, replace=False)
-                half2_values = set(split_values) - set(half1_values)  # this only works because of `replace=False` above
-                split_half1_indices = (sub_assembly['subject']==half1_values).values
-                split_half2_indices = (sub_assembly['subject']==half2_values).values
+                half2_values = list(set(split_values) - set(half1_values))  # this only works because of `replace=False` above
+
+                split_half1_indices = (sub_assembly['subject'] == half1_values).values
+                split_half2_indices = (sub_assembly['subject'] == half2_values).values
 
 
-                half1 = sub_assembly[{split_dim: [value in half1_values for value in split1_indices]}]   #.mean(split_dim)
-                half2 = sub_assembly[{split_dim: [value in half2_values for value in split_values]}]   #.mean(split_dim)
+                # half1 = sub_assembly[{split_dim: [value in half1_values for value in split_half1_indices]}]   #.mean(split_dim)
+                # half2 = sub_assembly[{split_dim: [value in half2_values for value in split_half2_indices]}]   #.mean(split_dim)
 
+                half1 = sub_assembly[split_half1_indices, :, :]
+                half2 = sub_assembly[split_half2_indices, :, :]
 
                 # pool_words_average = pool_assembly.multi_groupby(nonrepetition_coords).mean(dim=repetition_dims)
 
@@ -153,34 +156,88 @@ class InternalConsistency:
                 stimuli_set_half1 = list(stimuli_set_half1)
                 stimuli_set_half2 = list(stimuli_set_half2)
 
-
-               # keep only overlapping words from half1 and half2
-                half1 = half1[overlapping_stimuli]
-                half2 = half2[overlapping_stimuli]
-
-
                 # group half1, half2 by words, and average neural data over duplicate words.
+                half1_grouped_by_word = half1.groupby('word').median(dim='presentation').sortby('word')
+                half2_grouped_by_word = half2.groupby('word').median(dim='presentation').sortby('word')
+
+                # keep only overlapping words from half1 and half2
+                overlapping_stimuli = sorted(overlapping_stimuli)
+                half1_grouped_by_word_overlap = half1_grouped_by_word.sel(word=overlapping_stimuli)
+                half2_grouped_by_word_overlap = half2_grouped_by_word.sel(word=overlapping_stimuli)
+
                 # Each assembly should have elements as the number of unique words
-                repetition_dims = assembly['presentation'].dims
-                #nonrepetition_coords = [coord for coord, dims, values in walk_coords(assembly)
-                #                        if dims == repetition_dims and coord != 'presentation']
+                assert(len(half1_grouped_by_word_overlap) == len(overlapping_stimuli))
+                assert(len(half2_grouped_by_word_overlap) == len(overlapping_stimuli))
 
-                half1 = half1.multi_groupby('words').mean(dim=repetition_dims)
-                half2 = half2.multi_groupby('words').mean(dim=repetition_dims)
+                # plot_activations_per_word(half2_grouped_by_word_overlap[0:10,:,:])
+                # plot_histogram_neuroid(half2_grouped_by_word_overlap, 195)
+                # max_indices = np.unravel_index(np.nanargmax(assembly.values), assembly.values.shape)
+                # assembly_clipped = assembly.copy(data=np.clip(assembly.values, a_min=None, a_max=np.nanpercentile(assembly.values,99.9)))
+                # plot_histogram_neuroid(clipped_assembly, 195)
+                # assembly_averaged_over_timebins = assembly_clipped.mean(dim='time_bin')
+                # neuron_means = assembly_averaged_over_timebins.mean(dim='presentation')
+                # assembly_averaged_over_timebins_normalized = assembly_averaged_over_timebins/neuron_means
+                # neuron_activation_per_word = assembly_averaged_over_timebins_normalized.groupby('word').mean(dim='presentation').sortby('word')
 
-                # Make sure words are ordered in the same order
-                half1 = half1.sort_by_words
-                half2 = half2.sort_by_words
+                # neuron_ind = 2
+                # specific_neuroid_data = neuron_activation_per_word.sel(neuroid=neuron_ind)
+                # Plot the values for the specific neuroid
+                # specific_neuroid_data['word'] = specific_neuroid_data['word'].astype(str)
+                # specific_neuroid_data.plot(x='word')
+
+                # Comparing the two halves:
+                # half1_grouped_by_word_overlap_tim_averaged = half1_grouped_by_word_overlap.mean(dim='time_bin')
+                # half2_grouped_by_word_overlap_tim_averaged = half2_grouped_by_word_overlap.mean(dim='time_bin')
+
+                # neuron_means = half1_grouped_by_word_overlap_tim_averaged.mean(dim='word')
+                # half1_time_averaged_normalized = half1_grouped_by_word_overlap_tim_averaged/neuron_means
+                # neuron_means = half2_grouped_by_word_overlap_tim_averaged.mean(dim='word')
+                # half2_time_averaged_normalized = half2_grouped_by_word_overlap_tim_averaged/neuron_means
+
+                # neuron_ind = 2
+                # specific_neuroid_data_half1 = half1_time_averaged_normalized.sel(neuroid=neuron_ind)
+                # specific_neuroid_data_half2 = half2_time_averaged_normalized.sel(neuroid=neuron_ind)
+
+                # Plot the values for the specific neuroid
+                # specific_neuroid_data_half1['word'] = specific_neuroid_data_half1['word'].astype(str)
+                # specific_neuroid_data_half2['word'] = specific_neuroid_data_half2['word'].astype(str)
+                # specific_neuroid_data_half1.plot(x='word')
+                # plt.show()
+                # specific_neuroid_data_half2.plot(x='word')
+                # plt.show()
+
+                # fig, axs = plt.subplots(nrows=2)
+                # specific_neuroid_data_half1.plot(x='word', ax=axs[0])
+                # specific_neuroid_data_half2.plot(x='word', ax=axs[1])
+                # plt.tight_layout()
+                # plt.show(figsize=(10, 6))
+                #
+                #
+                # specific_neuroid_data_half1.plot(x='word')
+                # specific_neuroid_data_half2.plot(x='word')
+                # plt.tight_layout()
+                # plt.show(figsize=(10, 3))
+                #
+
+                # plt.scatter(specific_neuroid_data_half1.values, specific_neuroid_data_half2.values, label=f'Neuroid {neuron_ind}', marker='o')
+                #
+                # # Add labels and title
+                # plt.xlabel('Normalized Values - Half 1')
+                # plt.ylabel('Normalized Values - Half 2')
+                # plt.title(f'Scatter Plot for Neuroid {neuron_ind}')
+                # plt.legend()
+                #
+                # # Show the modified figure size
+                # plt.show()
 
 
                 # Calculate correlation between the two averaged responses (one vector per half)
-
-
                 consistency = self.consistency_metric(half1[:, 1], half2[:, 1])
                 uncorrected_consistencies.append(consistency)
                 # Spearman-Brown correction for sub-sampling
-                corrected_consistency = 2 * consistency / (1 + (2 - 1) * consistency)
-                consistencies.append(corrected_consistency)
+                # corrected_consistency = 2 * consistency / (1 + (2 - 1) * consistency)
+                # consistencies.append(corrected_consistency)
+                
             consistencies = Score(consistencies, coords={'split': splits}, dims=['split'])
             uncorrected_consistencies = Score(uncorrected_consistencies, coords={'split': splits}, dims=['split'])
             average_consistency = consistencies.median('split')
