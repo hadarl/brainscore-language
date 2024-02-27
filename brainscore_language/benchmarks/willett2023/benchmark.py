@@ -5,6 +5,7 @@ import numpy as np
 from numpy.random import RandomState
 from tqdm import tqdm, trange
 import itertools
+import random
 
 from brainio.assemblies import array_is_element, walk_coords, DataAssembly, merge_data_arrays
 from brainio.assemblies import DataAssembly
@@ -120,17 +121,23 @@ class InternalConsistency:
     def __call__(self, assembly: DataAssembly) -> Score:
         split_dim = np.array(assembly[self.split_coordinate].dims).item()
 
-        num_subjects = len(set(assembly['subject'].values))
-        subject_subsamples = self.build_subject_subsamples(num_subjects) # This is the number of subjects (sessions) to include in the subsample.
-        consistencies, uncorrected_consistencies = [], []
+        num_subjects_all = len(set(assembly['subject'].values))
+        # subject_subsamples = self.build_subject_subsamples(num_subjects_all) # This is the number of subjects (sessions) to include in the subsample.
+        subject_subsamples = [num for num in range(2, num_subjects_all+1) if num % 2 == 0]
+        average_consistency_all_subsamples = []
         for num_subjects in tqdm(subject_subsamples, desc='num subjects'):
-            selection_combinations = self.iterate_subsets(assembly, num_subjects=num_subjects)
-            for selections, sub_assembly in tqdm(selection_combinations, desc='selections'):
-
+            consistencies, uncorrected_consistencies = [], []
+            # selection_combinations = self.iterate_subsets(assembly, num_subjects=num_subjects)
+            selection_combinations = list(self.iterate_subsets(assembly, num_subjects=num_subjects))
+            random_selections = random.sample(selection_combinations, self.num_splits)
+            selections_list = []
+            # for selections, sub_assembly in tqdm(selection_combinations, desc='selections'):
+            for selections, sub_assembly in tqdm(random_selections, desc='selections'):
+                selections_list.append(selections)
                 split_values = np.unique(sub_assembly['subject'].values)
                 random_state = RandomState(0)
                 #consistencies, uncorrected_consistencies = [], []
-                splits = range(self.num_splits)
+                # splits = range(self.num_splits)
                 # probably need to add here a loop over splits
                 # cut the selections (subset of sessions) into two halves
                 half1_values = random_state.choice(split_values, size=len(split_values) // 2, replace=False)
@@ -153,8 +160,8 @@ class InternalConsistency:
                 stimuli_set_half2 = set(half2['word'].values)
                 overlapping_stimuli = stimuli_set_half1.intersection(stimuli_set_half2)
                 overlapping_stimuli = list(overlapping_stimuli)
-                stimuli_set_half1 = list(stimuli_set_half1)
-                stimuli_set_half2 = list(stimuli_set_half2)
+                # stimuli_set_half1 = list(stimuli_set_half1)
+                # stimuli_set_half2 = list(stimuli_set_half2)
 
                 # group half1, half2 by words, and average neural data over duplicate words.
                 half1_grouped_by_word = half1.groupby('word').median(dim='presentation').sortby('word')
@@ -166,8 +173,8 @@ class InternalConsistency:
                 half2_grouped_by_word_overlap = half2_grouped_by_word.sel(word=overlapping_stimuli)
 
                 # Each assembly should have elements as the number of unique words
-                assert(len(half1_grouped_by_word_overlap) == len(overlapping_stimuli))
-                assert(len(half2_grouped_by_word_overlap) == len(overlapping_stimuli))
+                assert (len(half1_grouped_by_word_overlap) == len(overlapping_stimuli))
+                assert (len(half2_grouped_by_word_overlap) == len(overlapping_stimuli))
 
                 # plot_activations_per_word(half2_grouped_by_word_overlap[0:10,:,:])
                 # plot_histogram_neuroid(half2_grouped_by_word_overlap, 195)
@@ -230,20 +237,34 @@ class InternalConsistency:
                 # # Show the modified figure size
                 # plt.show()
 
+                half1_average = half1_grouped_by_word_overlap.mean('time_bin')
+                half2_average = half2_grouped_by_word_overlap.mean('time_bin')
 
-                # Calculate correlation between the two averaged responses (one vector per half)
-                consistency = self.consistency_metric(half1[:, 1], half2[:, 1])
-                uncorrected_consistencies.append(consistency)
+                # Calculate correlation across words between the two averaged responses (word X neuroid matrix per half)
+                corr_per_neuroid = xr.corr(half1_average, half2_average, dim='word')
+                consistency = corr_per_neuroid.mean()
+
+                # consistency = self.consistency_metric(half1[:, 1], half2[:, 1])
+                uncorrected_consistencies.append(consistency.to_numpy())
                 # Spearman-Brown correction for sub-sampling
+                # HADAR: NOT SURE IF IT IS NEEDED HERE
                 # corrected_consistency = 2 * consistency / (1 + (2 - 1) * consistency)
                 # consistencies.append(corrected_consistency)
+                consistencies.append(consistency.to_numpy())
+                # Filling in both just in case they are both needed afterwards
                 
-            consistencies = Score(consistencies, coords={'split': splits}, dims=['split'])
-            uncorrected_consistencies = Score(uncorrected_consistencies, coords={'split': splits}, dims=['split'])
-            average_consistency = consistencies.median('split')
+            #consistencies = Score(consistencies, coords={'split': splits}, dims=['split'])
+            #uncorrected_consistencies = Score(uncorrected_consistencies, coords={'split': splits}, dims=['split'])
+            # average_consistency = consistencies.median('split')
+            average_consistency = xr.DataArray(np.median(consistencies))
             average_consistency.attrs['raw'] = consistencies
             average_consistency.attrs['uncorrected_consistencies'] = uncorrected_consistencies
-            return average_consistency
+            average_consistency.attrs['num_sessions'] = num_subjects
+            average_consistency.attrs['selections'] = selections_list
+
+            average_consistency_all_subsamples.append(average_consistency)
+
+        return average_consistency_all_subsamples
 
 
     def build_subject_subsamples(self, num_subjects):
