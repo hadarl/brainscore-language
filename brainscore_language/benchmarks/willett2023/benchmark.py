@@ -6,6 +6,7 @@ from numpy.random import RandomState
 from tqdm import tqdm, trange
 import itertools
 import random
+from math import comb
 
 from brainio.assemblies import array_is_element, walk_coords, DataAssembly, merge_data_arrays
 from brainio.assemblies import DataAssembly
@@ -125,11 +126,25 @@ class InternalConsistency:
         # subject_subsamples = self.build_subject_subsamples(num_subjects_all) # This is the number of subjects (sessions) to include in the subsample.
         subject_subsamples = [num for num in range(2, num_subjects_all+1) if num % 2 == 0]
         average_consistency_all_subsamples = []
-        for num_subjects in tqdm(subject_subsamples, desc='num subjects'):
+        #for num_subjects in tqdm(subject_subsamples, desc='num subjects'):
+        for num_subjects in [subject_subsamples]:
             consistencies, uncorrected_consistencies = [], []
-            # selection_combinations = self.iterate_subsets(assembly, num_subjects=num_subjects)
-            selection_combinations = list(self.iterate_subsets(assembly, num_subjects=num_subjects))
-            random_selections = random.sample(selection_combinations, self.num_splits)
+            # First selecting a subset of "subjects"
+            selection_combinations = self.iterate_subsets(assembly, num_subjects=num_subjects)
+            # selection_combinations = list(self.iterate_subsets(assembly, num_subjects=num_subjects))
+            # random_selections = random.sample(selection_combinations, self.num_splits)
+            # random_selections = [subset for subset in random.sample(self.iterate_subsets(assembly, num_subjects=num_subjects), self.num_splits)]
+            # Out of all possible combinations, randomly selecting num_splits combinations:
+            # note that this is relevant only if num_subjects<num_subjects_all
+            if num_subjects < num_subjects_all:
+                # start_index = random.randint(0, comb(num_subjects, self.num_splits) - self.num_splits*10)
+                # random_selections = random.sample(list(itertools.islice(selection_combinations, start_index, start_index + self.num_splits*10)), self.num_splits)
+                # random_selections = random.sample(list(itertools.islice(selection_combinations, self.num_splits)), self.num_splits)
+                # * how to randomly select num_splits combinations from all possible combinations.
+                random_selections = random.sample(list(itertools.islice(selection_combinations, 200)), self.num_splits)
+            else:  # There is just one selection when selecting all the participants:
+                random_selections = random.sample(list(selection_combinations),1)
+
             selections_list = []
             # for selections, sub_assembly in tqdm(selection_combinations, desc='selections'):
             for selections, sub_assembly in tqdm(random_selections, desc='selections'):
@@ -140,11 +155,16 @@ class InternalConsistency:
                 # splits = range(self.num_splits)
                 # probably need to add here a loop over splits
                 # cut the selections (subset of sessions) into two halves
+
+                # Then selecting the "subjects" for each half split
                 half1_values = random_state.choice(split_values, size=len(split_values) // 2, replace=False)
                 half2_values = list(set(split_values) - set(half1_values))  # this only works because of `replace=False` above
 
-                split_half1_indices = (sub_assembly['subject'] == half1_values).values
-                split_half2_indices = (sub_assembly['subject'] == half2_values).values
+                # FIX THIS LINE
+                split_half1_indices = [session in half1_values for session in sub_assembly['subject'].values]
+                split_half2_indices = [session in half2_values for session in sub_assembly['subject'].values]
+                # split_half1_indices = (sub_assembly['subject'] == half1_values).values
+                # split_half2_indices = (sub_assembly['subject'] == half2_values).values
 
 
                 # half1 = sub_assembly[{split_dim: [value in half1_values for value in split_half1_indices]}]   #.mean(split_dim)
