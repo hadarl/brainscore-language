@@ -18,7 +18,7 @@ from brainscore_language.artificial_subject import ArtificialSubject
 from brainscore_language.benchmarks.willett2023.ceiling_packaging import ExtrapolationCeiling, HoldoutSubjectCeilingWordAverage
 
 # from brainscore_language.data.blank2014 import BIBTEX
-# from brainscore_language.utils.ceiling import ceiling_normalize
+from brainscore_language.utils.ceiling import ceiling_normalize
 #from brainscore_language.data.willett2023 import load_willett2023_reference
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ class Willett2023Linear(BenchmarkBase):
         predictions['stimulus_id'] = 'presentation', words['stimulus_id'].values
         raw_score = self.metric(predictions[:,1:257], self.data[:,:,1])
         print(raw_score)
-        # score = ceiling_normalize(raw_score, self.ceiling)
+        score = ceiling_normalize(raw_score, self.ceiling)
         return raw_score
 
     # used implementation from here:
