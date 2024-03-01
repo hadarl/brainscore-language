@@ -127,7 +127,7 @@ class InternalConsistency:
         subject_subsamples = [num for num in range(2, num_subjects_all+1) if num % 2 == 0]
         average_consistency_all_subsamples = []
         #for num_subjects in tqdm(subject_subsamples, desc='num subjects'):
-        for num_subjects in [subject_subsamples]:
+        for num_subjects in subject_subsamples:
             consistencies, uncorrected_consistencies = [], []
             # First selecting a subset of "subjects"
             selection_combinations = self.iterate_subsets(assembly, num_subjects=num_subjects)
