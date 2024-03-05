@@ -50,7 +50,7 @@ print('Execution time:', elapsed_time, 'seconds')
 #########
 
 layer_names = []
-for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(6)], desc='layers'):
+for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(36)], desc='layers'):
     layer_names.append(layer)
 
 print(layer_names)
@@ -66,50 +66,102 @@ for layer in layer_names:
 print(layer_scores_ordered)
 print(layer_scores_std_ordered)
 
-import numpy as np
-from matplotlib import pyplot
+def plot_score_vs_layer(layer_scores_ordered, layer_scores_std_ordered):
 
-fig, ax = pyplot.subplots(1,1,figsize=(5,5))
-x = np.arange(len(layer_scores_ordered))
-#ax.scatter(x, layer_scores_ordered)
-ax.errorbar(x, layer_scores_ordered, yerr=layer_scores_std_ordered, fmt='o')
-ax.set_xticks(x)
-fig.subplots_adjust(bottom=0.3, left=0.2)
-ax.set_xticklabels(layer_names, rotation=45, ha='right')
-ax.set_ylabel('score')
+    import numpy as np
+    import matplotlib.pyplot as plt
 
-fig.savefig('Willett2023_distilgpt.png')
+    # fig, ax = plt.subplots(figsize=(10,10))
+    x = np.arange(len(layer_scores_ordered))
+    #ax.scatter(x, layer_scores_ordered)
+    ax.errorbar(x, layer_scores_ordered, yerr=layer_scores_std_ordered, fmt='o')
+    ax.set_xticks(x)
+    fig.subplots_adjust(bottom=0.3, left=0.2)
+    ax.set_xticklabels(layer_names, rotation=45, ha='right')
+    ax.set_ylabel('score')
+    # ax.legend()
+    #plt.show()
 
+    #fig.savefig('Willett2023_gpt2-large.png')
+
+#####
 
 layer_scores_per_neuroid = []
 layer_scores_per_neuroid_reordered = []
 for layer in layer_names:
-    data = layer_scores.sel(layer=layer).raw.mean('split').data
+    data = db['layer_scores'].sel(layer=layer).raw.mean('split').data
     data = data.reshape(256,1)
     data_reordered = data[electrode_mapping]
     print(np.shape(data))
     layer_scores_per_neuroid.append(data)
     layer_scores_per_neuroid_reordered.append(data_reordered)
 
-plt.imshow(layer_scores_per_neuroid_reordered[5].reshape(16,16))
+plt.imshow(layer_scores_per_neuroid_reordered[0].reshape(16,16))
 plt.colorbar()
+plt.show()
 
-
+#############
 
 layer_scores_per_neuroid = []
 layer_scores_per_neuroid_reordered = []
-for layer in range(6):
+for layer in range(36):
     data = layer_scores_backup[layer].raw.mean('split').data
     data = data.reshape(256,1)
     data_reordered = data[electrode_mapping]
     layer_scores_per_neuroid.append(data)
     layer_scores_per_neuroid_reordered.append(data_reordered)
 
-plt.imshow(layer_scores_per_neuroid_reordered[1].reshape(16,16))
+plt.imshow(layer_scores_per_neuroid_reordered[8].reshape(16,16))
 plt.colorbar()
+plt.show()
+##############
+
+
+layer_scores_per_array = layer_scores_per_neuroid_reordered[8].reshape(16,16)[8:16,8:16]
+plt.imshow(layer_scores_per_array)
+plt.colorbar()
+plt.show()
+
+###################
+
+layer_scores_per_neuroid_reordered_reshaped = []
+
+for layer in range(36):
+    arr_all = []
+    arr = layer_scores_per_neuroid_reordered[layer].reshape(16, 16)[0:8,0:8]
+    arr_all.append(arr.reshape(64,1))
+    arr = layer_scores_per_neuroid_reordered[layer].reshape(16, 16)[0:8,8:16]
+    arr_all.append(arr.reshape(64,1))
+    arr = layer_scores_per_neuroid_reordered[layer].reshape(16, 16)[8:16, 0:8]
+    arr_all.append(arr.reshape(64,1))
+    arr = layer_scores_per_neuroid_reordered[layer].reshape(16, 16)[8:16, 8:16]
+    arr_all.append(arr.reshape(64,1))
+    layer_scores_per_neuroid_reordered_reshaped.append(arr_all)
+
+layer_scores_per_neuroid_reordered_reshaped = np.squeeze(layer_scores_per_neuroid_reordered_reshaped)
+
+array_pos = ["IFG_sup", "6v_sup", "IFG_inf", "6v_inf"]
+layer_scores_per_array = xr.DataArray(layer_scores_per_neuroid_reordered_reshaped,
+                                      coords = [layer_names, array_pos, range(64)], dims = ["layers", "array", "neuroid"])
+
+means = layer_scores_per_array.mean('neuroid')
+stds = layer_scores_per_array.std('neuroid')
+
+fig, ax = plt.subplots(figsize=(10, 10))
+for array_ind in range(4):
+    plot_score_vs_layer(means[:,array_ind], stds[:,array_ind])
+ax.legend(array_pos)
+plt.show()
+#fig.show()
 
 
 
+
+
+
+
+
+#######################
 def plot_activations_per_word(assembly):
     import matplotlib.pyplot as plt
 
@@ -174,6 +226,7 @@ for i in range(11):
     # plt.pause(0.5)
 n = [num for num in range(2, 24) if num % 2 == 0]
 plt.legend(n)
+plt.show()
 
 plt.hist(ceilings,50)
 
@@ -317,6 +370,9 @@ db['model'] = model
 db['benchmark'] = benchmark
 db['layer_scores'] = layer_scores
 db['layer_score'] = layer_score
+db['layer_scores_backup'] = layer_scores_backup
+db['model_identifier'] = model_identifier
+db['ceilings'] = ceilings
 
 dbfile = open('distilgpt2_Willett2023.pkl', 'ab')
 
@@ -326,8 +382,8 @@ pickle.dump(db, dbfile)
 dbfile.close()
 
 #
-# dbfile = open('examplePickle', 'rb')
-#     db = pickle.load(dbfile)
-#     for keys in db:
-#         print(keys, '=>', db[keys])
-#     dbfile.close()
+dbfile = open('gpt2-large_Willett2023.pkl', 'rb')
+    db = pickle.load(dbfile)
+    for keys in db:
+        print(keys, '=>', db[keys])
+    dbfile.close()
