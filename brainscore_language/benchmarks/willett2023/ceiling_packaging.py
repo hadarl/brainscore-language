@@ -213,7 +213,7 @@ class HoldoutSubjectCeilingWordAverage:
                 # PS, the reason for doing it in this very long way and not using intersect is because intersect obliterates most of the assembly fields
 
                 #Problem: WE ARE NOT COMPARING THE SAME SENTENCES, BUT THE SAME WORDS COMING FROM DIFFERENT SENTENCES.
-                # THEREFORE THE STIMULUS_ID IS NOT IDENTICAL. CURRENTLY I WILL BE IGNORING THIS AND OVERWRITE THE STIMULUS_ID SO THAT THEY CAN BE SCORED TOGETHER
+                # THEREFORE THE STIMULUS_ID IS NOT IDENTICAL. FOR NOW I WILL BE IGNORING THIS AND OVERWRITE THE STIMULUS_ID SO THAT THEY CAN BE SCORED TOGETHER
 
                 # repetition_dims = assembly['presentation'].dims
                 # nonrepetition_coords = [coord for coord, dims, values in walk_coords(assembly)
