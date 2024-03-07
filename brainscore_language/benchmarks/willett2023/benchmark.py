@@ -69,7 +69,7 @@ class Willett2023Linear(BenchmarkBase):
             predictions.append(word_predictions)
         predictions = xr.concat(predictions, dim='presentation')
         predictions['stimulus_id'] = 'presentation', words['stimulus_id'].values
-        raw_score = self.metric(predictions[:,1:257], self.data.mean('time_bin'))
+        raw_score = self.metric(predictions, self.data.mean('time_bin'))
         print(raw_score)
         # score = ceiling_normalize(raw_score, self.ceiling)
         return raw_score
