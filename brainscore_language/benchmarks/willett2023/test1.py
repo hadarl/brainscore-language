@@ -18,8 +18,8 @@ from brainscore_language.benchmarks.willett2023.plot_utils import *
 
 st = time.time()
 
-# model_identifier = 'distilgpt2'
-model_identifier = 'gpt2-large'
+model_identifier = 'distilgpt2'
+# model_identifier = 'gpt2-large'
 
 model = HuggingfaceSubject(model_id=model_identifier, region_layer_mapping={})
 print(model.basemodel)
@@ -34,7 +34,7 @@ layer_scores = []
 
 from brainscore_language import score
 
-for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(36)], desc='layers'):
+for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(6)], desc='layers'):
     print(layer)
     layer_model = HuggingfaceSubject(model_id=model_identifier, region_layer_mapping={
         ArtificialSubject.RecordingTarget.language_system: layer})
@@ -57,7 +57,7 @@ print('Execution time:', elapsed_time, 'seconds')
 #########
 
 layer_names = []
-for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(36)], desc='layers'):
+for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(6)], desc='layers'):
     layer_names.append(layer)
 
 print(layer_names)
@@ -85,12 +85,18 @@ for layer in layer_names:
     layer_scores_per_neuroid.append(data)
     layer_scores_per_neuroid_reordered.append(data_reordered)
 
-plt.imshow(layer_scores_per_neuroid_reordered[0].reshape(16,16))
+plt.imshow(layer_scores_per_neuroid_reordered[4].reshape(16,16))
 plt.colorbar()
 plt.show()
 
 #############
 
+tmp = db['layer_scores'].sel(layer='transformer.h.35.ln_1').raw.mean('split').data
+plt.imshow(tmp)
+
+
+
+################ # If db is not in variables
 layer_scores_per_neuroid = []
 layer_scores_per_neuroid_reordered = []
 for layer in range(36):
@@ -106,7 +112,7 @@ plt.show()
 ##############
 
 
-layer_scores_per_array = layer_scores_per_neuroid_reordered[8].reshape(16,16)[8:16,8:16]
+layer_scores_per_array = layer_scores_per_neuroid_reordered[2].reshape(16,16)[8:16,8:16]
 plt.imshow(layer_scores_per_array)
 plt.colorbar()
 plt.show()
@@ -115,7 +121,7 @@ plt.show()
 
 layer_scores_per_neuroid_reordered_reshaped = []
 
-for layer in range(36):
+for layer in range(6):
     arr_all = []
     arr = layer_scores_per_neuroid_reordered[layer].reshape(16, 16)[0:8,0:8]
     arr_all.append(arr.reshape(64,1))
@@ -192,8 +198,8 @@ db['model_identifier'] = model_identifier
 db['ceilings'] = ceilings
 
 
-dbfile = open('gpt2-large_Willett2023_07Mar2024_768features.pkl', 'ab')
-
+#dbfile = open('gpt2-large_Willett2023_07Mar2024_768features.pkl', 'ab')
+dbfile = open('distilgpt2_Willett2023_01Oct2024_768features.pkl', 'ab')
 import pickle
 # source, destination
 pickle.dump(db, dbfile)
@@ -202,7 +208,91 @@ dbfile.close()
 #
 import pickle
 dbfile = open('gpt2-large_Willett2023_07Mar2024_768features.pkl', 'rb')
-    db = pickle.load(dbfile)
-    for keys in db:
-        print(keys, '=>', db[keys])
-    dbfile.close()
+db = pickle.load(dbfile)
+for keys in db:
+    print(keys, '=>', db[keys])
+dbfile.close()
+
+
+#
+# import pickle
+# dbfile = open('/home/hadarla/Projects/brainscore-language-fork/gpt2-large_Willett2023_07Mar2024_768features.pkl', 'rb')
+# db = pickle.load(dbfile)
+# for keys in db:
+#     print(keys, '=>', db[keys])
+# dbfile.close()
+
+
+####################################
+
+
+fig, ax = plt.subplots(figsize=(10, 10))
+plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.tab20.colors)
+
+for array_ind in range(4):
+
+    x = np.arange(36)
+    #linestyle = {"linestyle": "-", "linewidth": 4, "markeredgewidth": 5, "elinewidth": 5, "capsize": 10}
+    ax.plot(x,means[:,array_ind],linewidth=4)
+
+
+    # # ax.scatter(x, layer_scores_ordered)
+    # # ax.errorbar(x, layer_scores_ordered, yerr=layer_scores_std_ordered, fmt='o',zorder=array_ind)
+    # # ax.set_xticks(x)
+    fig.subplots_adjust(bottom=0.3, left=0.2)
+    # # ax.set_xticklabels(layer_names, rotation=45, ha='right')
+    # # ax.set_ylabel('score')
+    #
+    # #ax.axis([0, 5, 0, 35])
+    #linestyle = {"linestyle": "-", "linewidth": 4, "markeredgewidth": 5, "elinewidth": 5, "capsize": 10}
+    # ax.errorbar(x, layer_scores_ordered, yerr=layer_scores_std_ordered, color=color[array_ind], **linestyle)
+    ax.set_xticklabels(layer_names, rotation=45, ha='right')
+    ax.set_ylabel('score')
+
+plt.xticks(np.arange(0,36))
+plt.rcParams.update({'font.size': 20})
+
+plt.legend(array_pos,loc=7)
+#plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+plt.show()
+#fig.savefig('/home/hadarla/Projects/brainscore-language-fork/results/Brainscore_t17_meanLayerScore_allArrays.svg') #, bbox_inches='tight')
+
+
+
+
+
+###############################
+
+
+fig, ax = plt.subplots(figsize=(10, 10))
+plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.tab20.colors)
+
+for array_ind in range(4):
+
+    x = np.arange(len(layer_scores_ordered))
+    #linestyle = {"linestyle": "-", "linewidth": 4, "markeredgewidth": 5, "elinewidth": 5, "capsize": 10}
+    ax.plot(x,means[:,array_ind],linewidth=4)
+
+
+    # # ax.scatter(x, layer_scores_ordered)
+    # # ax.errorbar(x, layer_scores_ordered, yerr=layer_scores_std_ordered, fmt='o',zorder=array_ind)
+    # # ax.set_xticks(x)
+    fig.subplots_adjust(bottom=0.3, left=0.2)
+    # # ax.set_xticklabels(layer_names, rotation=45, ha='right')
+    # # ax.set_ylabel('score')
+    #
+    # #ax.axis([0, 5, 0, 35])
+    #linestyle = {"linestyle": "-", "linewidth": 4, "markeredgewidth": 5, "elinewidth": 5, "capsize": 10}
+    # ax.errorbar(x, layer_scores_ordered, yerr=layer_scores_std_ordered, color=color[array_ind], **linestyle)
+    ax.set_xticklabels(layer_names, rotation=45, ha='right')
+    ax.set_ylabel('score')
+
+plt.xticks(np.arange(0,6))
+plt.rcParams.update({'font.size': 20})
+
+plt.legend(array_pos,loc=7)
+#plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+plt.show()
+#fig.savefig('/home/hadarla/Projects/brainscore-language-fork/results/Brainscore_t17_meanLayerScore_allArrays.svg') #, bbox_inches='tight')
