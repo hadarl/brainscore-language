@@ -28,7 +28,11 @@ def plot_score_vs_layer(layer_scores_ordered, layer_scores_std_ordered):
 
     import matplotlib.pyplot as plt
 
-    # fig, ax = plt.subplots(figsize=(10,10))
+    layer_names = []
+    for layer in tqdm([f'transformer.h.{block}.ln_1' for block in range(6)], desc='layers'):
+        layer_names.append(layer)
+
+    fig, ax = plt.subplots(figsize=(10,10))
     x = np.arange(len(layer_scores_ordered))
     #ax.scatter(x, layer_scores_ordered)
     ax.errorbar(x, layer_scores_ordered, yerr=layer_scores_std_ordered, fmt='o')
@@ -140,8 +144,8 @@ def plot_scores_per_layer(layer_scores_per_neuroid_reordered, filename):
     #draw.line((100, 200, 150, 300), fill=128)
     #im.show()
 
-    Nr = 6
-    Nc = 6
+    Nr = 2
+    Nc = 3
 
     fig, axs = plt.subplots(Nr, Nc)
     fig.suptitle('Scores per layer')
